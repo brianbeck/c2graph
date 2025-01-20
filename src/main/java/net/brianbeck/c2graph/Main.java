@@ -16,10 +16,7 @@ package net.brianbeck.c2graph;
 
             ApplicationProperties ap = ApplicationProperties.getInstance();
 
-            System.out.println("test");
-            System.out.println("HFEUYWGFYUEGBFUYEWK "  + ap.getEnvironment().getProperty("ENVIRONMENT"));
-
-            String env = ap.getEnvironment().getProperty("ENVIRONMENT");
+            String env = ap.getValue("ENVIRONMENT");
             //String env = ApplicationProperties.getInstance().getEnvironment().getProperty("ENVIRONMENT");
 
             if (env.equals("DEV")) {

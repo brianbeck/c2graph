@@ -19,6 +19,10 @@ public class ApplicationProperties {
     private String test = "TEST";
     private String production = "PROD";
 
+    private String devPropertiesPath = "c2graph/src/main/resources/dev.properties";
+    private String testPropertiesPath = "c2graph/src/main/resources/test.properties";
+    private String productionPropertiesPath = "c2graph/src/main/resources/production.properties";
+
 
     protected ApplicationProperties() {
         _environmentProperties = new Properties();
@@ -31,19 +35,19 @@ public class ApplicationProperties {
         }
 
         if (_environmentProperties.getProperty(environment).equals(dev)) {
-            try (OutputStream input = new FileOutputStream("c2graph/src/main/resources/environment.properties")) {
+            try (OutputStream input = new FileOutputStream(devPropertiesPath )) {
                 _environmentProperties.store(input, null);
             } catch (IOException ex) {
                 ex.printStackTrace();
             }
         } else if (_environmentProperties.getProperty(environment).equals(production)) {
-            try (OutputStream input = new FileOutputStream("c2graph/src/main/resources/environment.properties")) {
+            try (OutputStream input = new FileOutputStream(productionPropertiesPath)) {
                 _environmentProperties.store(input, null);
             } catch (IOException ex) {
                 ex.printStackTrace();
             }
         } else if (_environmentProperties.getProperty(environment).equals(test)) {
-            try (OutputStream input = new FileOutputStream("c2graph/src/main/resources/environment.properties")) {
+            try (OutputStream input = new FileOutputStream(testPropertiesPath)) {
                 _environmentProperties.store(input, null);
             } catch (IOException ex) {
                 ex.printStackTrace();
