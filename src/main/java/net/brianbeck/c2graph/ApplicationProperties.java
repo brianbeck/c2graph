@@ -1,10 +1,8 @@
 package net.brianbeck.c2graph;
 
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.util.Properties;
 
 public class ApplicationProperties {
@@ -29,26 +27,28 @@ public class ApplicationProperties {
 
         try (InputStream input = new FileInputStream("c2graph/src/main/resources/environment.properties")) {
             _environmentProperties.load(input);
+            input.close();
             System.out.println("******* " + _environmentProperties.getProperty(environment));
         } catch (IOException ex) {
             ex.printStackTrace();
         }
 
         if (_environmentProperties.getProperty(environment).equals(dev)) {
-            try (OutputStream input = new FileOutputStream(devPropertiesPath )) {
-                _environmentProperties.store(input, null);
+            try (InputStream input = new FileInputStream(devPropertiesPath )) {
+                _environmentProperties.load(input);
+                input.close();
             } catch (IOException ex) {
                 ex.printStackTrace();
             }
         } else if (_environmentProperties.getProperty(environment).equals(production)) {
-            try (OutputStream input = new FileOutputStream(productionPropertiesPath)) {
-                _environmentProperties.store(input, null);
+            try (InputStream input = new FileInputStream(productionPropertiesPath)) {
+                _environmentProperties.load(input);
             } catch (IOException ex) {
                 ex.printStackTrace();
             }
         } else if (_environmentProperties.getProperty(environment).equals(test)) {
-            try (OutputStream input = new FileOutputStream(testPropertiesPath)) {
-                _environmentProperties.store(input, null);
+            try (InputStream input = new FileInputStream(testPropertiesPath)) {
+                _environmentProperties.load(input);
             } catch (IOException ex) {
                 ex.printStackTrace();
             }
@@ -71,6 +71,7 @@ public class ApplicationProperties {
     }
 
     public String getValue(String key) {
+        //TODO: Log when the key doesn't exist and return null
         return this._environmentProperties.getProperty(key, String.format("The key %s does not exists!", key));
     }
 }
