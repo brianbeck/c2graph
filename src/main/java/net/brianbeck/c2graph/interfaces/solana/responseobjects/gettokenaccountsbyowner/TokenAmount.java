@@ -7,7 +7,6 @@ public class TokenAmount {
     private Double uiAmount;
     private String uiAmountString;
 
-    // Getters and Setters
     public String getAmount() {
         return amount;
     }

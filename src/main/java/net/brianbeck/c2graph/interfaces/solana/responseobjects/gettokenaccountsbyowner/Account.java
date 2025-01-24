@@ -4,14 +4,13 @@ import javax.xml.crypto.Data;
 
 public class Account {
 
-        private Data data;
+    private Data data;
     private boolean executable;
     private long lamports;
     private String owner;
     private long rentEpoch;
     private int space;
 
-    // Getters and Setters
     public Data getData() {
         return data;
     }

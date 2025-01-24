@@ -5,7 +5,6 @@ public class Parsed {
     private Info info;
     private String type;
 
-    // Getters and Setters
     public Info getInfo() {
         return info;
     }

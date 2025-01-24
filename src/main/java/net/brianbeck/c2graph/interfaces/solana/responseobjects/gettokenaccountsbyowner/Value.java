@@ -1,17 +1,15 @@
 package net.brianbeck.c2graph.interfaces.solana.responseobjects.gettokenaccountsbyowner;
 
-import java.util.List;
-
 public class Value {
 
-    private List<Account> account;
+    private Account account;
     private String pubkey;
 
-    public List<Account> getAccount() {
+    public Account getAccount() {
         return account;
     }
 
-    public void setAccount(List<Account> account) {
+    public void setAccount(Account account) {
         this.account = account;
     }
 

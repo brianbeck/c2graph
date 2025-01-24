@@ -1,11 +1,10 @@
 package net.brianbeck.c2graph.interfaces.solana.responseobjects.gettokenaccountsbyowner;
 
 public class Context {
-    
+
     private String apiVersion;
     private long slot;
 
-    // Getters and Setters
     public String getApiVersion() {
         return apiVersion;
     }

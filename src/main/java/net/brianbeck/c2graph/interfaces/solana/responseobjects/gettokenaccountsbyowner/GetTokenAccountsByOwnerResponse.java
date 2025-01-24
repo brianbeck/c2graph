@@ -10,7 +10,6 @@ public class GetTokenAccountsByOwnerResponse {
     private GetTokenAcountsByOwnerResult result;
     private int id;
 
-    // Getters and Setters
     public String getJsonrpc() {
         return jsonrpc;
     }

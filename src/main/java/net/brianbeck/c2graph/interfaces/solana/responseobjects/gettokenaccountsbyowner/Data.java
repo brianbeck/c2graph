@@ -1,12 +1,11 @@
 package net.brianbeck.c2graph.interfaces.solana.responseobjects.gettokenaccountsbyowner;
 
 public class Data {
-    
+
     private Parsed parsed;
     private String program;
     private int space;
 
-    // Getters and Setters
     public Parsed getParsed() {
         return parsed;
     }

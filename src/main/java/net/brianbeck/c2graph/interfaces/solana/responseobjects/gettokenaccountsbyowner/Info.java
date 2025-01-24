@@ -8,7 +8,6 @@ public class Info {
     private String state;
     private TokenAmount tokenAmount;
 
-    // Getters and Setters
     public boolean isNative() {
         return isNative;
     }
