@@ -1,0 +1,42 @@
+# Environment
+.env
+.env.local
+
+# Go
+api-gateway/sentinel-api
+worker/sentinel-worker
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+
+# Neo4j data (Docker volume)
+neo4j-data/
+
+# RabbitMQ data (Docker volume)
+rabbitmq-data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Archives (keep tracked but don't clutter)
+_archive/java/c2graph/target/
+_archive/java/c2graph/.git/
