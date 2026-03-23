@@ -6,8 +6,8 @@ import (
 	"regexp"
 	"strconv"
 
-	"github.com/brianbeck/sentinel-api/internal/neo4j"
-	"github.com/brianbeck/sentinel-api/internal/queue"
+	"github.com/brianbeck/c2graph-api/internal/neo4j"
+	"github.com/brianbeck/c2graph-api/internal/queue"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 )

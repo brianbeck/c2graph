@@ -1,21 +1,25 @@
 import { useState, useCallback, useEffect } from "react";
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { LoginPage } from "./auth/LoginPage";
 import { SearchBar } from "./components/SearchBar";
 import { GraphView } from "./components/GraphView";
 import { NodeDetail } from "./components/NodeDetail";
 import { StatusBar } from "./components/StatusBar";
+import { GraphToolbar, defaultFilters } from "./components/GraphToolbar";
+import type { GraphFilters } from "./components/GraphToolbar";
 import { useScan } from "./hooks/useScan";
 import { useGraph } from "./hooks/useGraph";
 import type { GraphNode } from "./types/graph";
 
-function SentinelApp() {
+function C2GraphApp() {
   const { user, loading: authLoading, signOut } = useAuth();
   const { scan, status, isScanning, error: scanError } = useScan();
   const { graph, fetchGraph, error: graphError } = useGraph();
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [currentAddress, setCurrentAddress] = useState<string>("");
   const [currentDepth, setCurrentDepth] = useState<number>(1);
+  const [filters, setFilters] = useState<GraphFilters>(defaultFilters);
 
   const handleScan = useCallback(
     (address: string, depth: number) => {
@@ -31,7 +35,7 @@ function SentinelApp() {
   useEffect(() => {
     if (
       status &&
-      (status.status === "complete" || status.status === "capped" || status.status === "ready") &&
+      (status.status === "complete" || status.status === "capped") &&
       currentAddress
     ) {
       fetchGraph(currentAddress, currentDepth);
@@ -93,7 +97,7 @@ function SentinelApp() {
             letterSpacing: "0.05em",
           }}
         >
-          SENTINEL
+          C2GRAPH
         </h1>
         {user && (
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
@@ -123,7 +127,16 @@ function SentinelApp() {
 
       {/* Main content */}
       <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
-        <GraphView graph={graph} onNodeClick={setSelectedNode} />
+        <GraphToolbar
+          graph={graph}
+          filters={filters}
+          onFiltersChange={setFilters}
+        />
+        <GraphView
+          graph={graph}
+          filters={filters}
+          onNodeClick={setSelectedNode}
+        />
         <NodeDetail node={selectedNode} onClose={() => setSelectedNode(null)} />
       </div>
     </div>
@@ -132,9 +145,11 @@ function SentinelApp() {
 
 function App() {
   return (
-    <AuthProvider>
-      <SentinelApp />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <C2GraphApp />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

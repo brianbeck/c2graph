@@ -29,7 +29,7 @@ func NewMiddleware(jwtSecret string) *Middleware {
 func (m *Middleware) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Skip auth if no JWT secret configured (dev mode)
-		if m.jwtSecret == "" {
+		if m.jwtSecret == "" || m.jwtSecret == "your-jwt-secret" {
 			log.Warn().Msg("Auth disabled: no SUPABASE_JWT_SECRET configured")
 			ctx := context.WithValue(r.Context(), UserIDKey, "dev-user")
 			next.ServeHTTP(w, r.WithContext(ctx))

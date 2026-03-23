@@ -66,15 +66,28 @@ func (e *Engine) ScoreWallet(ctx context.Context, address string) error {
 		totalScore += score
 	}
 
+	// Bot detection
+	var botResult *BotResult
+	if br, err := e.detectBotBehavior(ctx, address); err != nil {
+		log.Warn().Err(err).Str("address", address).Msg("Bot detection failed")
+		botResult = &BotResult{} // zero values
+	} else {
+		botResult = br
+		if br.RiskContribution > 0 {
+			factors["bot_behavior"] = br.RiskContribution
+			totalScore += br.RiskContribution
+		}
+	}
+
 	// Clamp to 0-100, normalize to 0.0-1.0
 	totalScore = math.Min(totalScore, 100)
 	normalizedScore := totalScore / 100.0
 
 	// Write score back to wallet
-	return e.writeScore(ctx, address, normalizedScore, factors)
+	return e.writeScore(ctx, address, normalizedScore, factors, botResult)
 }
 
-func (e *Engine) writeScore(ctx context.Context, address string, score float64, factors map[string]float64) error {
+func (e *Engine) writeScore(ctx context.Context, address string, score float64, factors map[string]float64, bot *BotResult) error {
 	session := e.driver.NewSession(ctx, neo4j.SessionConfig{
 		DatabaseName: "neo4j",
 		AccessMode:   neo4j.AccessModeWrite,
@@ -86,25 +99,43 @@ func (e *Engine) writeScore(ctx context.Context, address string, score float64, 
 		var factorList []string
 		for name, score := range factors {
 			factorList = append(factorList, name)
-			_ = score // Score details could be stored in a more structured way later
+			_ = score
 		}
 
 		query := `
 			MATCH (w:Wallet {address: $address})
 			SET w.risk_score = $score,
 			    w.risk_factors = $factors,
+			    w.is_bot = $is_bot,
+			    w.bot_likelihood = $bot_likelihood,
+			    w.bot_signal_timing_regularity = $bot_timing,
+			    w.bot_signal_velocity = $bot_velocity,
+			    w.bot_signal_program_concentration = $bot_program,
+			    w.bot_signal_hour_spread = $bot_hours,
 			    w.scored_at = datetime()
 		`
 		_, err := tx.Run(ctx, query, map[string]interface{}{
-			"address": address,
-			"score":   score,
-			"factors": factorList,
+			"address":        address,
+			"score":          score,
+			"factors":        factorList,
+			"is_bot":         bot.IsBot,
+			"bot_likelihood": bot.Likelihood,
+			"bot_timing":     bot.TimingRegularity,
+			"bot_velocity":   bot.Velocity,
+			"bot_program":    bot.ProgramConcentrate,
+			"bot_hours":      bot.HourSpread,
 		})
 		return nil, err
 	})
 
 	if err == nil {
-		log.Info().Str("address", address).Float64("score", score).Interface("factors", factors).Msg("Scored wallet")
+		log.Info().
+			Str("address", address).
+			Float64("score", score).
+			Bool("is_bot", bot.IsBot).
+			Float64("bot_likelihood", bot.Likelihood).
+			Interface("factors", factors).
+			Msg("Scored wallet")
 	}
 	return err
 }

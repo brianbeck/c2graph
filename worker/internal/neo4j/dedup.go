@@ -209,6 +209,30 @@ func (d *DedupChecker) UpdateScanJobProgress(ctx context.Context, jobID string, 
 	return err
 }
 
+// SetScanJobExpected sets the total number of wallets expected for a job.
+// Called after the root wallet enqueues its children.
+func (d *DedupChecker) SetScanJobExpected(ctx context.Context, jobID string, walletsExpected int) error {
+	session := d.driver.NewSession(ctx, neo4j.SessionConfig{
+		DatabaseName: "neo4j",
+		AccessMode:   neo4j.AccessModeWrite,
+	})
+	defer session.Close(ctx)
+
+	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		query := `
+			MATCH (j:ScanJob {job_id: $job_id})
+			SET j.wallets_expected = $wallets_expected,
+			    j.updated_at = datetime()
+		`
+		_, err := tx.Run(ctx, query, map[string]interface{}{
+			"job_id":           jobID,
+			"wallets_expected": walletsExpected,
+		})
+		return nil, err
+	})
+	return err
+}
+
 // CreateScanJob creates a new ScanJob node in Neo4j.
 func (d *DedupChecker) CreateScanJob(ctx context.Context, jobID, rootAddress string, depth, walletsCap int) error {
 	session := d.driver.NewSession(ctx, neo4j.SessionConfig{

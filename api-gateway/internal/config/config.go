@@ -36,7 +36,7 @@ func Load() (*Config, error) {
 		CORSOrigin:        getEnv("API_CORS_ORIGIN", "http://localhost:5173"),
 		Neo4jURI:          getEnv("NEO4J_URI", "bolt://localhost:7687"),
 		Neo4jUser:         getEnv("NEO4J_USER", "neo4j"),
-		Neo4jPassword:     getEnv("NEO4J_PASSWORD", "sentinel-dev-password"),
+		Neo4jPassword:     getEnv("NEO4J_PASSWORD", "c2graph-dev-password"),
 		RabbitMQURI:       getEnv("RABBITMQ_URI", "amqp://guest:guest@localhost:5672/"),
 		SupabaseURL:       getEnv("SUPABASE_URL", ""),
 		SupabaseJWTSecret: getEnv("SUPABASE_JWT_SECRET", ""),

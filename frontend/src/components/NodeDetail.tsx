@@ -24,7 +24,8 @@ export function NodeDetail({ node, onClose }: NodeDetailProps) {
         right: 0,
         top: 0,
         bottom: 0,
-        width: "360px",
+        width: "420px",
+        boxSizing: "border-box",
         background: "#1a1a2e",
         borderLeft: "1px solid #333",
         padding: "20px",
@@ -119,6 +120,44 @@ export function NodeDetail({ node, onClose }: NodeDetailProps) {
         </div>
       )}
 
+      {/* Bot Likelihood (wallets only) */}
+      {isWallet && (node.props.bot_likelihood ?? 0) > 0 && (
+        <div style={{ marginBottom: "12px" }}>
+          <label style={{ color: "#888", fontSize: "11px", display: "block" }}>
+            Bot Likelihood
+          </label>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <div
+              style={{
+                flex: 1,
+                height: "8px",
+                background: "#333",
+                borderRadius: "4px",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  width: `${(node.props.bot_likelihood ?? 0) * 100}%`,
+                  height: "100%",
+                  background: (node.props.bot_likelihood ?? 0) >= 0.5 ? "#06b6d4" : "#334155",
+                  borderRadius: "4px",
+                }}
+              />
+            </div>
+            <span
+              style={{
+                color: (node.props.bot_likelihood ?? 0) >= 0.5 ? "#06b6d4" : "#888",
+                fontWeight: "bold",
+                minWidth: "36px",
+              }}
+            >
+              {((node.props.bot_likelihood ?? 0) * 100).toFixed(0)}%
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Tags */}
       {isWallet && node.props.tags && node.props.tags.length > 0 && (
         <div style={{ marginBottom: "12px" }}>
@@ -177,12 +216,12 @@ export function NodeDetail({ node, onClose }: NodeDetailProps) {
         <label style={{ color: "#888", fontSize: "11px", display: "block", marginBottom: "6px" }}>
           Properties
         </label>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
           <tbody>
             {Object.entries(node.props)
               .filter(
                 ([key]) =>
-                  !["type", "tags", "risk_factors", "risk_score"].includes(key)
+                  !["type", "tags", "risk_factors", "risk_score", "bot_likelihood"].includes(key)
               )
               .map(([key, value]) => (
                 <tr key={key} style={{ borderBottom: "1px solid #222" }}>
@@ -192,6 +231,7 @@ export function NodeDetail({ node, onClose }: NodeDetailProps) {
                       color: "#888",
                       verticalAlign: "top",
                       whiteSpace: "nowrap",
+                      width: "120px",
                     }}
                   >
                     {key}
@@ -202,6 +242,7 @@ export function NodeDetail({ node, onClose }: NodeDetailProps) {
                       fontFamily: "monospace",
                       fontSize: "12px",
                       wordBreak: "break-all",
+                      overflowWrap: "anywhere",
                     }}
                   >
                     {formatValue(value)}

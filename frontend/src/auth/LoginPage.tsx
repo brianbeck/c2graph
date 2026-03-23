@@ -16,7 +16,7 @@ export function LoginPage() {
         fontFamily: "system-ui, sans-serif",
       }}
     >
-      <h1 style={{ fontSize: "2.5rem", marginBottom: "0.5rem" }}>Sentinel</h1>
+      <h1 style={{ fontSize: "2.5rem", marginBottom: "0.5rem" }}>C2Graph</h1>
       <p style={{ color: "#888", marginBottom: "2rem" }}>
         Solana Fraud Detection Graph
       </p>

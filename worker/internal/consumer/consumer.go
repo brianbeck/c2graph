@@ -8,9 +8,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/brianbeck/sentinel-worker/internal/config"
-	neo4jwriter "github.com/brianbeck/sentinel-worker/internal/neo4j"
-	"github.com/brianbeck/sentinel-worker/internal/solana"
+	"github.com/brianbeck/c2graph-worker/internal/config"
+	neo4jwriter "github.com/brianbeck/c2graph-worker/internal/neo4j"
+	"github.com/brianbeck/c2graph-worker/internal/scoring"
+	"github.com/brianbeck/c2graph-worker/internal/solana"
 	neo4jdriver "github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/rs/zerolog/log"
@@ -31,20 +32,24 @@ type Consumer struct {
 	solClient *solana.Client
 	writer    *neo4jwriter.Writer
 	dedup     *neo4jwriter.DedupChecker
+	scorer    *scoring.Engine
 	conn      *amqp.Connection
 	channel   *amqp.Channel
 
 	// Per-job wallet counters: job_id -> count
 	jobCounters sync.Map
+	// Per-job expected wallet counts: job_id -> expected total
+	jobExpected sync.Map
 }
 
 // NewConsumer creates a new RabbitMQ consumer.
-func NewConsumer(cfg *config.Config, solClient *solana.Client, writer *neo4jwriter.Writer, dedup *neo4jwriter.DedupChecker) *Consumer {
+func NewConsumer(cfg *config.Config, solClient *solana.Client, writer *neo4jwriter.Writer, dedup *neo4jwriter.DedupChecker, scorer *scoring.Engine) *Consumer {
 	return &Consumer{
 		cfg:       cfg,
 		solClient: solClient,
 		writer:    writer,
 		dedup:     dedup,
+		scorer:    scorer,
 	}
 }
 
@@ -199,6 +204,11 @@ func (c *Consumer) processMessage(ctx context.Context, workerID int, msg amqp.De
 		return
 	}
 
+	// Score the wallet (bot detection + fraud heuristics)
+	if err := c.scorer.ScoreWallet(ctx, scanMsg.Address); err != nil {
+		logger.Warn().Err(err).Msg("Failed to score wallet")
+	}
+
 	// Mark wallet as scanned
 	if err := c.dedup.MarkWalletScanned(ctx, scanMsg.Address, scanMsg.CurrentDepth); err != nil {
 		logger.Error().Err(err).Msg("Failed to mark wallet as scanned")
@@ -207,19 +217,26 @@ func (c *Consumer) processMessage(ctx context.Context, workerID int, msg amqp.De
 	// Increment job counter
 	count := c.incrementJobCounter(scanMsg.RootJobID)
 
-	// Update job progress
-	status := "processing"
-	if scanMsg.CurrentDepth <= 1 {
-		// This is a leaf node, check if job is complete
-		status = "processing"
-	}
-	if err := c.dedup.UpdateScanJobProgress(ctx, scanMsg.RootJobID, int(count), status); err != nil {
-		logger.Warn().Err(err).Msg("Failed to update job progress")
-	}
-
 	// If depth > 1, discover and enqueue child wallets
 	if scanMsg.CurrentDepth > 1 {
 		c.enqueueChildWallets(ctx, &scanMsg, count)
+	} else {
+		// Leaf node: check if the entire job is complete
+		expected := c.getJobExpected(scanMsg.RootJobID)
+		if expected > 0 && int(count) >= expected {
+			if err := c.dedup.UpdateScanJobProgress(ctx, scanMsg.RootJobID, int(count), "complete"); err != nil {
+				logger.Warn().Err(err).Msg("Failed to update job progress")
+			}
+		} else if expected == 0 && scanMsg.Depth <= 1 {
+			// Depth-1 scan: this is the only wallet, job is done
+			if err := c.dedup.UpdateScanJobProgress(ctx, scanMsg.RootJobID, int(count), "complete"); err != nil {
+				logger.Warn().Err(err).Msg("Failed to update job progress")
+			}
+		} else {
+			if err := c.dedup.UpdateScanJobProgress(ctx, scanMsg.RootJobID, int(count), "processing"); err != nil {
+				logger.Warn().Err(err).Msg("Failed to update job progress")
+			}
+		}
 	}
 
 	msg.Ack(false)
@@ -399,6 +416,8 @@ func (c *Consumer) enqueueChildWallets(ctx context.Context, scanMsg *ScanMessage
 	childWallets, err := c.dedup.GetDiscoveredWallets(ctx, scanMsg.Address)
 	if err != nil {
 		log.Error().Err(err).Str("address", scanMsg.Address).Msg("Failed to discover child wallets")
+		// No children to enqueue — if this is the root, the job is complete
+		c.dedup.UpdateScanJobProgress(ctx, scanMsg.RootJobID, int(currentJobCount), "complete")
 		return
 	}
 
@@ -436,10 +455,34 @@ func (c *Consumer) enqueueChildWallets(ctx context.Context, scanMsg *ScanMessage
 	}
 
 	log.Info().Str("address", scanMsg.Address).Int("children", enqueued).Msg("Enqueued child wallets")
+
+	if enqueued == 0 {
+		// No children enqueued — job is complete
+		c.dedup.UpdateScanJobProgress(ctx, scanMsg.RootJobID, int(currentJobCount), "complete")
+	} else {
+		// Set expected count so leaf nodes know when the job is done
+		// Expected = wallets already processed + children just enqueued
+		expected := int(currentJobCount) + enqueued
+		c.setJobExpected(scanMsg.RootJobID, expected)
+		c.dedup.SetScanJobExpected(ctx, scanMsg.RootJobID, expected)
+		c.dedup.UpdateScanJobProgress(ctx, scanMsg.RootJobID, int(currentJobCount), "processing")
+	}
 }
 
 func (c *Consumer) incrementJobCounter(jobID string) int64 {
 	val, _ := c.jobCounters.LoadOrStore(jobID, new(atomic.Int64))
 	counter := val.(*atomic.Int64)
 	return counter.Add(1)
+}
+
+func (c *Consumer) setJobExpected(jobID string, expected int) {
+	c.jobExpected.Store(jobID, expected)
+}
+
+func (c *Consumer) getJobExpected(jobID string) int {
+	val, ok := c.jobExpected.Load(jobID)
+	if !ok {
+		return 0
+	}
+	return val.(int)
 }

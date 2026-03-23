@@ -7,10 +7,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/brianbeck/sentinel-worker/internal/config"
-	"github.com/brianbeck/sentinel-worker/internal/consumer"
-	neo4jstore "github.com/brianbeck/sentinel-worker/internal/neo4j"
-	"github.com/brianbeck/sentinel-worker/internal/solana"
+	"github.com/brianbeck/c2graph-worker/internal/config"
+	"github.com/brianbeck/c2graph-worker/internal/consumer"
+	neo4jstore "github.com/brianbeck/c2graph-worker/internal/neo4j"
+	"github.com/brianbeck/c2graph-worker/internal/scoring"
+	"github.com/brianbeck/c2graph-worker/internal/solana"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -20,7 +21,7 @@ func main() {
 	// Pretty console logging for development
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339})
 
-	log.Info().Msg("Starting Sentinel Worker")
+	log.Info().Msg("Starting C2Graph Worker")
 
 	// Load configuration
 	cfg, err := config.Load()
@@ -43,12 +44,13 @@ func main() {
 	log.Info().Str("uri", cfg.Neo4jURI).Msg("Connected to Neo4j")
 
 	// Create services
-	solClient := solana.NewClient(cfg.SolanaRPCURL, cfg.SolanaRPCRateLimit)
+	solClient := solana.NewMultiClient(cfg.SolanaRPCURLs, cfg.SolanaRPCRateLimits)
 	writer := neo4jstore.NewWriter(driver)
 	dedup := neo4jstore.NewDedupChecker(driver, cfg.ScanFreshnessHrs)
+	scorer := scoring.NewEngine(driver)
 
 	// Create consumer
-	cons := consumer.NewConsumer(cfg, solClient, writer, dedup)
+	cons := consumer.NewConsumer(cfg, solClient, writer, dedup, scorer)
 	defer cons.Close()
 
 	// Setup graceful shutdown

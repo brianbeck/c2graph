@@ -1,5 +1,5 @@
 // =============================================================================
-// Sentinel - Seed Known Solana Programs
+// C2Graph - Seed Known Solana Programs
 // These are well-known programs on Solana with risk categorizations.
 // =============================================================================
 

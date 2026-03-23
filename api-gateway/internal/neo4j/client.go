@@ -251,6 +251,35 @@ func (c *Client) CreateScanJob(ctx context.Context, jobID, address string, depth
 	return err
 }
 
+// GetAllWalletAddresses returns all wallet addresses in the database.
+func (c *Client) GetAllWalletAddresses(ctx context.Context) ([]string, error) {
+	session := c.driver.NewSession(ctx, neo4j.SessionConfig{
+		DatabaseName: "neo4j",
+		AccessMode:   neo4j.AccessModeRead,
+	})
+	defer session.Close(ctx)
+
+	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		rec, err := tx.Run(ctx, `MATCH (w:Wallet) RETURN w.address AS address`, nil)
+		if err != nil {
+			return nil, err
+		}
+		var addrs []string
+		for rec.Next(ctx) {
+			if val, ok := rec.Record().Get("address"); ok {
+				if addr, ok := val.(string); ok {
+					addrs = append(addrs, addr)
+				}
+			}
+		}
+		return addrs, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.([]string), nil
+}
+
 func toMapStringInterface(val interface{}) map[string]interface{} {
 	if val == nil {
 		return map[string]interface{}{}

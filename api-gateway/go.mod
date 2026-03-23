@@ -1,4 +1,4 @@
-module github.com/brianbeck/sentinel-api
+module github.com/brianbeck/c2graph-api
 
 go 1.25.7
 

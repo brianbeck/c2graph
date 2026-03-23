@@ -1,5 +1,5 @@
 // =============================================================================
-// Sentinel - Neo4j Schema Constraints & Indexes
+// C2Graph - Neo4j Schema Constraints & Indexes
 // Run this after Neo4j starts to set up the schema.
 // =============================================================================
 

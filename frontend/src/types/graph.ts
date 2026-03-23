@@ -22,6 +22,7 @@ export interface GraphNode {
     compute_units_consumed?: number;
     err?: string;
     risk_factors?: string[];
+    bot_likelihood?: number;
     [key: string]: unknown;
   };
 }

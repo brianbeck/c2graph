@@ -3,8 +3,8 @@
 .env.local
 
 # Go
-api-gateway/sentinel-api
-worker/sentinel-worker
+api-gateway/c2graph-api
+worker/c2graph-worker
 *.exe
 *.exe~
 *.dll

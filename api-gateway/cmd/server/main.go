@@ -9,11 +9,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/brianbeck/sentinel-api/internal/auth"
-	"github.com/brianbeck/sentinel-api/internal/config"
-	"github.com/brianbeck/sentinel-api/internal/handler"
-	neo4jclient "github.com/brianbeck/sentinel-api/internal/neo4j"
-	"github.com/brianbeck/sentinel-api/internal/queue"
+	"github.com/brianbeck/c2graph-api/internal/auth"
+	"github.com/brianbeck/c2graph-api/internal/config"
+	"github.com/brianbeck/c2graph-api/internal/handler"
+	neo4jclient "github.com/brianbeck/c2graph-api/internal/neo4j"
+	"github.com/brianbeck/c2graph-api/internal/queue"
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -26,7 +26,7 @@ func main() {
 	// Pretty console logging for development
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339})
 
-	log.Info().Msg("Starting Sentinel API Gateway")
+	log.Info().Msg("Starting C2Graph API Gateway")
 
 	// Load config
 	cfg, err := config.Load()

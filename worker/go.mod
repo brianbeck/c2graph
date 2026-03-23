@@ -1,4 +1,4 @@
-module github.com/brianbeck/sentinel-worker
+module github.com/brianbeck/c2graph-worker
 
 go 1.25.7
 

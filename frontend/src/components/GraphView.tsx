@@ -1,9 +1,12 @@
-import { useRef, useCallback, useEffect } from "react";
+import { useRef, useCallback, useEffect, useMemo } from "react";
 import ForceGraph2D from "react-force-graph-2d";
-import type { GraphNode, GraphResponse } from "../types/graph";
+import type { GraphNode, GraphLink, GraphResponse } from "../types/graph";
+import type { GraphFilters } from "./GraphToolbar";
+import { applyFilters } from "./GraphToolbar";
 
 interface GraphViewProps {
   graph: GraphResponse | null;
+  filters: GraphFilters;
   onNodeClick: (node: GraphNode) => void;
 }
 
@@ -14,7 +17,7 @@ function riskColor(score: number): string {
   return `rgb(239, ${Math.round((1 - (score - 0.6) * 2.5) * 68)}, 68)`;
 }
 
-export function GraphView({ graph, onNodeClick }: GraphViewProps) {
+export function GraphView({ graph, filters, onNodeClick }: GraphViewProps) {
   const fgRef = useRef<any>(null);
 
   // Zoom to fit when graph data changes
@@ -35,6 +38,36 @@ export function GraphView({ graph, onNodeClick }: GraphViewProps) {
     [graph, onNodeClick]
   );
 
+  // All hooks must be called before any early return
+  const emptyGraph = { nodes: [] as GraphNode[], links: [] as GraphLink[] };
+  const filtered = useMemo(
+    () => (graph && graph.nodes.length > 0 ? applyFilters(graph, filters) : emptyGraph),
+    [graph, filters]
+  );
+
+  const graphData = useMemo(
+    () => ({
+      nodes: filtered.nodes.map((n) => ({
+        id: n.id,
+        type: n.type,
+        riskScore: n.props.risk_score ?? 0,
+        botLikelihood: n.props.bot_likelihood ?? 0,
+        txCount: n.props.tx_count ?? 1,
+        label:
+          n.type === "wallet"
+            ? `${n.id.slice(0, 4)}...${n.id.slice(-4)}`
+            : `tx:${n.id.slice(0, 6)}`,
+      })),
+      links: filtered.links.map((l) => ({
+        source: l.source,
+        target: l.target,
+        type: l.type,
+        label: formatLinkLabel(l),
+      })),
+    }),
+    [filtered]
+  );
+
   if (!graph || graph.nodes.length === 0) {
     return (
       <div
@@ -52,26 +85,6 @@ export function GraphView({ graph, onNodeClick }: GraphViewProps) {
     );
   }
 
-  // Transform data for react-force-graph
-  const graphData = {
-    nodes: graph.nodes.map((n) => ({
-      id: n.id,
-      type: n.type,
-      riskScore: n.props.risk_score ?? 0,
-      txCount: n.props.tx_count ?? 1,
-      label:
-        n.type === "wallet"
-          ? `${n.id.slice(0, 4)}...${n.id.slice(-4)}`
-          : `tx:${n.id.slice(0, 6)}`,
-    })),
-    links: graph.links.map((l) => ({
-      source: l.source,
-      target: l.target,
-      type: l.type,
-      label: formatLinkLabel(l),
-    })),
-  };
-
   return (
     <ForceGraph2D
       ref={fgRef}
@@ -87,8 +100,20 @@ export function GraphView({ graph, onNodeClick }: GraphViewProps) {
       nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
         const size = node.type === "wallet" ? 6 : 3;
         const color = node.type === "wallet" ? riskColor(node.riskScore) : "#555";
+        const isBot = node.botLikelihood >= 0.5;
 
         if (node.type === "wallet") {
+          // Bot indicator: dashed cyan ring
+          if (isBot) {
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, size + 3, 0, 2 * Math.PI);
+            ctx.setLineDash([3, 2]);
+            ctx.strokeStyle = "#06b6d4";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+
           // Circle for wallets
           ctx.beginPath();
           ctx.arc(node.x, node.y, size, 0, 2 * Math.PI);
@@ -111,12 +136,12 @@ export function GraphView({ graph, onNodeClick }: GraphViewProps) {
 
         // Draw label at reasonable zoom
         if (globalScale > 1.5 && node.type === "wallet") {
-          const label = node.label;
+          const label = isBot ? `[BOT] ${node.label}` : node.label;
           const fontSize = 10 / globalScale;
           ctx.font = `${fontSize}px monospace`;
           ctx.textAlign = "center";
           ctx.textBaseline = "top";
-          ctx.fillStyle = "#aaa";
+          ctx.fillStyle = isBot ? "#06b6d4" : "#aaa";
           ctx.fillText(label, node.x, node.y + size + 2);
         }
       }}

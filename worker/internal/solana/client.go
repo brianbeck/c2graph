@@ -8,6 +8,8 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -15,22 +17,68 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// Client is a rate-limited Solana JSON-RPC client.
-type Client struct {
-	endpoint   string
-	httpClient *http.Client
-	limiter    *rate.Limiter
-	requestID  atomic.Int64
+// endpoint holds the state for a single RPC endpoint.
+type endpoint struct {
+	url     string
+	limiter *rate.Limiter
+	healthy atomic.Bool
 }
 
-// NewClient creates a new Solana RPC client with rate limiting.
-func NewClient(endpoint string, ratePerSecond int) *Client {
+// Client is a multi-endpoint Solana JSON-RPC client with failover.
+// It tries the primary endpoint first; on rate-limit (429) or error it
+// falls through to the next endpoint. Each endpoint has its own rate limiter.
+type Client struct {
+	endpoints  []*endpoint
+	httpClient *http.Client
+	requestID  atomic.Int64
+	mu         sync.RWMutex
+	primary    int // index of current primary endpoint
+}
+
+// NewClient creates a new Solana RPC client with a single endpoint.
+// Kept for backward compatibility.
+func NewClient(endpointURL string, ratePerSecond int) *Client {
+	return NewMultiClient([]string{endpointURL}, []int{ratePerSecond})
+}
+
+// NewMultiClient creates a client that routes requests across multiple RPC endpoints.
+// The first endpoint is primary; others are fallbacks tried in order.
+// ratesPerSecond must have the same length as endpoints (or will be padded with 2).
+func NewMultiClient(urls []string, ratesPerSecond []int) *Client {
+	eps := make([]*endpoint, 0, len(urls))
+	for i, u := range urls {
+		u = strings.TrimSpace(u)
+		if u == "" {
+			continue
+		}
+		rps := 2
+		if i < len(ratesPerSecond) && ratesPerSecond[i] > 0 {
+			rps = ratesPerSecond[i]
+		}
+		ep := &endpoint{
+			url:     u,
+			limiter: rate.NewLimiter(rate.Limit(rps), rps),
+		}
+		ep.healthy.Store(true)
+		eps = append(eps, ep)
+	}
+
+	if len(eps) == 0 {
+		// Should not happen in practice; config validation catches it.
+		eps = append(eps, &endpoint{
+			url:     "https://api.mainnet-beta.solana.com",
+			limiter: rate.NewLimiter(2, 2),
+		})
+		eps[0].healthy.Store(true)
+	}
+
+	log.Info().Int("endpoints", len(eps)).Strs("urls", urls).Msg("Solana RPC client initialized")
+
 	return &Client{
-		endpoint: endpoint,
+		endpoints: eps,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		limiter: rate.NewLimiter(rate.Limit(ratePerSecond), ratePerSecond),
 	}
 }
 
@@ -42,9 +90,11 @@ type rpcRequest struct {
 	Params  []interface{} `json:"params"`
 }
 
-// call makes a rate-limited JSON-RPC call with retry on 429.
+// call routes a request through the endpoint list with per-endpoint retries.
+// On 429 or connection error it immediately tries the next endpoint before
+// doing any exponential backoff, maximising throughput.
 func (c *Client) call(ctx context.Context, method string, params []interface{}, result interface{}) error {
-	const maxRetries = 5
+	const maxRetriesPerEndpoint = 3
 
 	req := rpcRequest{
 		JSONRPC: "2.0",
@@ -58,70 +108,94 @@ func (c *Client) call(ctx context.Context, method string, params []interface{}, 
 		return fmt.Errorf("marshal request: %w", err)
 	}
 
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		// Wait for rate limiter
-		if err := c.limiter.Wait(ctx); err != nil {
-			return fmt.Errorf("rate limiter: %w", err)
-		}
+	// Build the order: start from current primary, wrap around.
+	c.mu.RLock()
+	startIdx := c.primary
+	c.mu.RUnlock()
 
-		httpReq, err := http.NewRequestWithContext(ctx, "POST", c.endpoint, bytes.NewReader(body))
-		if err != nil {
-			return fmt.Errorf("create request: %w", err)
-		}
-		httpReq.Header.Set("Content-Type", "application/json")
+	var lastErr error
 
-		resp, err := c.httpClient.Do(httpReq)
-		if err != nil {
-			if attempt < maxRetries {
-				backoff := time.Duration(math.Pow(2, float64(attempt))) * time.Second
-				log.Warn().Err(err).Dur("backoff", backoff).Int("attempt", attempt+1).Msg("RPC request failed, retrying")
-				select {
-				case <-time.After(backoff):
-					continue
-				case <-ctx.Done():
-					return ctx.Err()
-				}
+	for offset := 0; offset < len(c.endpoints); offset++ {
+		idx := (startIdx + offset) % len(c.endpoints)
+		ep := c.endpoints[idx]
+
+		for attempt := 0; attempt <= maxRetriesPerEndpoint; attempt++ {
+			// Wait for this endpoint's rate limiter
+			if err := ep.limiter.Wait(ctx); err != nil {
+				return fmt.Errorf("rate limiter: %w", err)
 			}
-			return fmt.Errorf("http request: %w", err)
-		}
 
-		respBody, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			return fmt.Errorf("read response: %w", err)
-		}
-
-		// Handle rate limiting (429)
-		if resp.StatusCode == http.StatusTooManyRequests {
-			if attempt < maxRetries {
-				backoff := time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
-				log.Warn().Dur("backoff", backoff).Int("attempt", attempt+1).Msg("Rate limited (429), backing off")
-				select {
-				case <-time.After(backoff):
-					continue
-				case <-ctx.Done():
-					return ctx.Err()
-				}
+			httpReq, err := http.NewRequestWithContext(ctx, "POST", ep.url, bytes.NewReader(body))
+			if err != nil {
+				return fmt.Errorf("create request: %w", err)
 			}
-			return fmt.Errorf("rate limited after %d retries", maxRetries)
-		}
+			httpReq.Header.Set("Content-Type", "application/json")
 
-		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(respBody))
-		}
+			resp, err := c.httpClient.Do(httpReq)
+			if err != nil {
+				lastErr = fmt.Errorf("[%s] http error: %w", ep.url, err)
+				if attempt < maxRetriesPerEndpoint {
+					backoff := time.Duration(math.Pow(2, float64(attempt))) * time.Second
+					log.Warn().Err(err).Str("endpoint", ep.url).Dur("backoff", backoff).Int("attempt", attempt+1).Msg("RPC request failed, retrying")
+					select {
+					case <-time.After(backoff):
+						continue
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+				}
+				// Exhausted retries on this endpoint — try next
+				break
+			}
 
-		// Check for JSON-RPC error
-		var rpcErr struct {
-			Error *RPCError `json:"error"`
-		}
-		if err := json.Unmarshal(respBody, &rpcErr); err == nil && rpcErr.Error != nil {
-			return fmt.Errorf("RPC error %d: %s", rpcErr.Error.Code, rpcErr.Error.Message)
-		}
+			respBody, err := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if err != nil {
+				lastErr = fmt.Errorf("[%s] read response: %w", ep.url, err)
+				break
+			}
 
-		return json.Unmarshal(respBody, result)
+			// 429 — try next endpoint immediately, don't burn retries here
+			if resp.StatusCode == http.StatusTooManyRequests {
+				lastErr = fmt.Errorf("[%s] rate limited (429)", ep.url)
+				log.Warn().Str("endpoint", ep.url).Msg("Rate limited (429), trying next endpoint")
+				break
+			}
+
+			if resp.StatusCode != http.StatusOK {
+				lastErr = fmt.Errorf("[%s] unexpected status %d: %s", ep.url, resp.StatusCode, string(respBody))
+				break
+			}
+
+			// Check for JSON-RPC error
+			var rpcErr struct {
+				Error *RPCError `json:"error"`
+			}
+			if err := json.Unmarshal(respBody, &rpcErr); err == nil && rpcErr.Error != nil {
+				lastErr = fmt.Errorf("[%s] RPC error %d: %s", ep.url, rpcErr.Error.Code, rpcErr.Error.Message)
+				// Some RPC errors are permanent (bad params) — don't failover
+				if rpcErr.Error.Code == -32600 || rpcErr.Error.Code == -32601 || rpcErr.Error.Code == -32602 {
+					return lastErr
+				}
+				break
+			}
+
+			// Success — promote this endpoint to primary if it wasn't already
+			if offset > 0 {
+				c.mu.Lock()
+				c.primary = idx
+				c.mu.Unlock()
+				log.Info().Str("endpoint", ep.url).Msg("Promoted to primary RPC endpoint")
+			}
+
+			return json.Unmarshal(respBody, result)
+		}
 	}
 
-	return fmt.Errorf("max retries exceeded")
+	if lastErr != nil {
+		return lastErr
+	}
+	return fmt.Errorf("all %d RPC endpoints exhausted", len(c.endpoints))
 }
 
 // GetSignaturesForAddress fetches transaction signatures for a wallet address.

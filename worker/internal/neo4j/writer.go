@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/brianbeck/sentinel-worker/internal/solana"
+	"github.com/brianbeck/c2graph-worker/internal/solana"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"github.com/rs/zerolog/log"
 )

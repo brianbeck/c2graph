@@ -3,7 +3,7 @@ package handler
 import (
 	"net/http"
 
-	"github.com/brianbeck/sentinel-api/internal/neo4j"
+	"github.com/brianbeck/c2graph-api/internal/neo4j"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 )
